@@ -52,3 +52,79 @@ Outputs:
 - Efficiency  
 
 ---
+
+## Project Structure
+
+```
+.
+├── bin/              # Compiled executables
+├── include/          # Headers (.h)
+├── src/              # Source code (.c)
+├── scripts/          # Test scripts
+├── Makefile          # Build system
+└── README.md         # Documentation
+```
+
+## Compilation
+
+```bash
+make
+```
+
+This compiles three versions in the `bin/` directory:
+- `bin/sequential` - sequential version
+- `bin/mpi_version` - MPI version
+- `bin/openmp_version` - OpenMP version
+
+## Usage
+
+### Sequential Version
+```bash
+./bin/sequential <input_image.bmp> <output_image.bmp> <mask_size>
+```
+
+### MPI Version
+```bash
+mpirun -np <num_procs> ./bin/mpi_version <input_image.bmp> <output_image.bmp> <mask_size>
+```
+
+### OpenMP Version
+```bash
+export OMP_NUM_THREADS=<num_threads>
+./bin/openmp_version <input_image.bmp> <output_image.bmp> <mask_size>
+```
+
+### Test Script
+```bash
+./scripts/test.sh <input_image.bmp> <mask_size>
+```
+
+The script runs all versions with different numbers of processes/threads and calculates speedup and efficiency.
+
+## Example
+
+```bash
+# Compile
+make
+
+# Run sequential version
+./bin/sequential input.bmp output_seq.bmp 5
+
+# Run MPI version with 4 processes
+mpirun -np 4 ./bin/mpi_version input.bmp output_mpi.bmp 5
+
+# Run OpenMP version with 4 threads
+export OMP_NUM_THREADS=4
+./bin/openmp_version input.bmp output_omp.bmp 5
+
+# Run complete test
+./scripts/test.sh input.bmp 5
+```
+
+## Requirements
+
+- GCC with OpenMP support
+- MPI (OpenMPI or MPICH)
+- 24-bit BMP image
+
+---

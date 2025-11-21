@@ -1,0 +1,24 @@
+# Binários compilados
+bin/
+*.o
+*.a
+*.so
+
+# Arquivos de saída de teste
+output_*.bmp
+*.bmp~
+
+# Arquivos temporários
+*~
+*.swp
+*.swo
+.DS_Store
+
+# Arquivos do editor
+.vscode/
+.idea/
+*.code-workspace
+
+# Logs
+*.log
+
