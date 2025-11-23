@@ -1,170 +1,177 @@
-#include "../include/bmp_utils.h"
-#include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <time.h>
-
-int compare_uint8(const void *a, const void *b) {
-    return (*(uint8_t*)a - *(uint8_t*)b);
-}
-
-void median_filter(Image *input, Image *output, int mask_size) {
-    int half = mask_size / 2;
-    
-    #pragma omp parallel
-    {
-        uint8_t *window = (uint8_t*)malloc(mask_size * mask_size * sizeof(uint8_t));
-        
-        #pragma omp for
-        for (int y = 0; y < input->height; y++) {
-            for (int x = 0; x < input->width; x++) {
-                int count = 0;
-                
-                for (int dy = -half; dy <= half; dy++) {
-                    for (int dx = -half; dx <= half; dx++) {
-                        int ny = y + dy;
-                        int nx = x + dx;
-                        
-                        if (ny >= 0 && ny < input->height && nx >= 0 && nx < input->width) {
-                            int idx = ny * input->width + nx;
-                            window[count++] = input->data[idx].r;
-                        }
-                    }
-                }
-                
-                qsort(window, count, sizeof(uint8_t), compare_uint8);
-                uint8_t median = window[count / 2];
-                
-                int idx = y * input->width + x;
-                output->data[idx].r = median;
-                output->data[idx].g = median;
-                output->data[idx].b = median;
-            }
-        }
-        
-        free(window);
-    }
-}
-
-void to_grayscale(Image *input, Image *output) {
-    #pragma omp parallel for
-    for (int i = 0; i < input->width * input->height; i++) {
-        uint8_t gray = (uint8_t)(0.299 * input->data[i].r + 
-                                  0.587 * input->data[i].g + 
-                                  0.114 * input->data[i].b);
-        output->data[i].r = gray;
-        output->data[i].g = gray;
-        output->data[i].b = gray;
-    }
-}
-
-void histogram_equalization(Image *img) {
-    int *hist = (int*)calloc(256, sizeof(int));
-    
-    #pragma omp parallel
-    {
-        int *local_hist = (int*)calloc(256, sizeof(int));
-        
-        #pragma omp for
-        for (int i = 0; i < img->width * img->height; i++) {
-            local_hist[img->data[i].r]++;
-        }
-        
-        #pragma omp critical
-        {
-            for (int i = 0; i < 256; i++) {
-                hist[i] += local_hist[i];
-            }
-        }
-        
-        free(local_hist);
-    }
-    
-    int *cdf = (int*)malloc(256 * sizeof(int));
-    cdf[0] = hist[0];
-    for (int i = 1; i < 256; i++) {
-        cdf[i] = cdf[i-1] + hist[i];
-    }
-    
-    int min_cdf = 0;
-    for (int i = 0; i < 256; i++) {
-        if (cdf[i] > 0) {
-            min_cdf = cdf[i];
-            break;
-        }
-    }
-    
-    int total_pixels = img->width * img->height;
-    
-    #pragma omp parallel for
-    for (int i = 0; i < img->width * img->height; i++) {
-        uint8_t old_val = img->data[i].r;
-        uint8_t new_val = (uint8_t)((cdf[old_val] - min_cdf) * 255.0 / (total_pixels - min_cdf));
-        img->data[i].r = new_val;
-        img->data[i].g = new_val;
-        img->data[i].b = new_val;
-    }
-    
-    free(hist);
-    free(cdf);
-}
+#include <omp.h>
+#include "bmp.h"
+#include "image_processing.h"
 
 int main(int argc, char *argv[]) {
     if (argc != 4) {
-        fprintf(stderr, "Usage: %s <input_image.bmp> <output_image.bmp> <mask_size>\n", argv[0]);
+        printf("Uso: %s <tamanho_mascara> <num_threads> <arquivo_entrada>\n", argv[0]);
+        printf("Exemplo: %s 3 4 data/img.bmp\n", argv[0]);
         return 1;
     }
-    
-    int mask_size = atoi(argv[3]);
+
+    int mask_size = atoi(argv[1]);
     if (mask_size % 2 == 0 || mask_size < 3) {
-        fprintf(stderr, "Mask size must be odd and >= 3\n");
+        printf("Tamanho da máscara deve ser ímpar e >= 3\n");
         return 1;
     }
-    
-    int num_threads = omp_get_max_threads();
-    if (getenv("OMP_NUM_THREADS")) {
-        num_threads = atoi(getenv("OMP_NUM_THREADS"));
-        omp_set_num_threads(num_threads);
+
+    int num_threads = atoi(argv[2]);
+    if (num_threads < 1) {
+        printf("Número de threads deve ser >= 1\n");
+        return 1;
     }
+
+    omp_set_num_threads(num_threads);
+
+    const char *input_file = argv[3];
     
+    // Gera nome do arquivo de saída com tamanho da máscara
+    char output_file[256];
+    snprintf(output_file, sizeof(output_file), "output/openmp_%d_output.bmp", mask_size);
+
+    // Lê a imagem
+    printf("Lendo imagem: %s\n", input_file);
+    BMPImage *img = read_bmp(input_file);
+    if (!img) {
+        return 1;
+    }
+
+    printf("Imagem carregada: %dx%d\n", img->width, img->height);
+    printf("Matriz de %d\n", mask_size);
+    printf("Processando com %d threads...\n", num_threads);
+
+    // Inicia medição de tempo
     double start_time = omp_get_wtime();
-    
-    Image *input = read_bmp(argv[1]);
-    if (!input) {
-        return 1;
+
+    // ETAPA 1: Filtro mediana
+    printf("Aplicando filtro mediana %dx%d...\n", mask_size, mask_size);
+    int width = img->width;
+    int height = img->height;
+    int row_size = ((width * 3 + 3) / 4) * 4;
+    int half = mask_size / 2;
+
+    uint8_t *original = (uint8_t*)malloc(row_size * height);
+    #pragma omp parallel for
+    for (int i = 0; i < row_size * height; i++) {
+        original[i] = img->data[i];
     }
-    
-    Image *filtered = (Image*)malloc(sizeof(Image));
-    filtered->width = input->width;
-    filtered->height = input->height;
-    filtered->data = (Pixel*)malloc(filtered->width * filtered->height * sizeof(Pixel));
-    
-    Image *grayscale = (Image*)malloc(sizeof(Image));
-    grayscale->width = input->width;
-    grayscale->height = input->height;
-    grayscale->data = (Pixel*)malloc(grayscale->width * grayscale->height * sizeof(Pixel));
-    
-    median_filter(input, filtered, mask_size);
-    to_grayscale(filtered, grayscale);
-    histogram_equalization(grayscale);
-    
-    if (!write_bmp(argv[2], grayscale)) {
-        free_image(input);
-        free_image(filtered);
-        free_image(grayscale);
-        return 1;
+
+    #pragma omp parallel
+    {
+        uint8_t *mask_values = (uint8_t*)malloc(mask_size * mask_size * sizeof(uint8_t));
+
+        #pragma omp for
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                for (int channel = 0; channel < 3; channel++) {
+                    int count = 0;
+
+                    for (int dy = -half; dy <= half; dy++) {
+                        for (int dx = -half; dx <= half; dx++) {
+                            int ny = y + dy;
+                            int nx = x + dx;
+
+                            if (ny >= 0 && ny < height && nx >= 0 && nx < width) {
+                                int idx = ny * row_size + nx * 3 + channel;
+                                mask_values[count++] = original[idx];
+                            }
+                        }
+                    }
+
+                    qsort(mask_values, count, sizeof(uint8_t), compare_uint8);
+                    uint8_t median = mask_values[count / 2];
+                    int idx = y * row_size + x * 3 + channel;
+                    img->data[idx] = median;
+                }
+            }
+        }
+
+        free(mask_values);
     }
-    
+
+    free(original);
+
+    // ETAPA 2: Conversão para tons de cinza
+    printf("Convertendo para tons de cinza...\n");
+    #pragma omp parallel for
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            int idx = y * row_size + x * 3;
+            uint8_t B = img->data[idx];
+            uint8_t G = img->data[idx + 1];
+            uint8_t R = img->data[idx + 2];
+            uint8_t gray = (uint8_t)(0.299 * R + 0.587 * G + 0.114 * B);
+            img->data[idx] = gray;
+            img->data[idx + 1] = gray;
+            img->data[idx + 2] = gray;
+        }
+    }
+
+    // ETAPA 3: Equalização de histograma
+    printf("Equalizando histograma...\n");
+    int histogram[256] = {0};
+
+    // Calcula histograma
+    #pragma omp parallel
+    {
+        int local_histogram[256] = {0};
+
+        #pragma omp for
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int idx = y * row_size + x * 3;
+                uint8_t gray = img->data[idx];
+                local_histogram[gray]++;
+            }
+        }
+
+        // Soma histogramas locais
+        #pragma omp critical
+        {
+            for (int i = 0; i < 256; i++) {
+                histogram[i] += local_histogram[i];
+            }
+        }
+    }
+
+    // Calcula histograma cumulativo
+    int cumulative[256];
+    cumulative[0] = histogram[0];
+    for (int i = 1; i < 256; i++) {
+        cumulative[i] = cumulative[i - 1] + histogram[i];
+    }
+
+    int total_pixels = width * height;
+
+    // Aplica equalização
+    #pragma omp parallel for
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            int idx = y * row_size + x * 3;
+            uint8_t gray = img->data[idx];
+            uint8_t new_value = (uint8_t)((cumulative[gray] * 255.0) / total_pixels);
+            img->data[idx] = new_value;
+            img->data[idx + 1] = new_value;
+            img->data[idx + 2] = new_value;
+        }
+    }
+
+    // Finaliza medição de tempo
     double end_time = omp_get_wtime();
     double time_spent = end_time - start_time;
-    
-    printf("OpenMP time (%d threads): %.6f seconds\n", num_threads, time_spent);
-    
-    free_image(input);
-    free_image(filtered);
-    free_image(grayscale);
-    
+
+    // Salva a imagem
+    printf("Salvando imagem: %s\n", output_file);
+    write_bmp(output_file, img);
+
+    printf("Tempo total: %.4f segundos\n", time_spent);
+
+    // Libera memória
+    free_bmp(img);
+
     return 0;
 }
 

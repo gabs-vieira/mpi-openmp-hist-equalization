@@ -1,277 +1,285 @@
-#include "../include/bmp_utils.h"
-#include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <time.h>
+#include <mpi.h>
+#include "bmp.h"
+#include "image_processing.h"
 
-int compare_uint8(const void *a, const void *b) {
-    return (*(uint8_t*)a - *(uint8_t*)b);
+// Função auxiliar para comparar valores
+int compare_uint8_mpi(const void *a, const void *b) {
+    uint8_t va = *(uint8_t*)a;
+    uint8_t vb = *(uint8_t*)b;
+    return (va < vb) ? -1 : (va > vb) ? 1 : 0;
 }
 
-void median_filter_parallel(Image *input, Image *output, int mask_size, int rank, int size) {
+// Função para aplicar filtro mediana em uma região da imagem
+void apply_median_filter_region(BMPImage *img, int mask_size, int start_y, int end_y) {
+    int width = img->width;
+    int height = img->height;
+    int row_size = ((width * 3 + 3) / 4) * 4;
     int half = mask_size / 2;
-    int rows_per_proc = input->height / size;
-    int start_row = rank * rows_per_proc;
-    int end_row = (rank == size - 1) ? input->height : (rank + 1) * rows_per_proc;
-    int local_rows = end_row - start_row;
-    
-    uint8_t *window = (uint8_t*)malloc(mask_size * mask_size * sizeof(uint8_t));
-    Pixel *local_result = (Pixel*)malloc(local_rows * input->width * sizeof(Pixel));
-    
-    for (int y = start_row; y < end_row; y++) {
-        for (int x = 0; x < input->width; x++) {
-            int count = 0;
-            
-            for (int dy = -half; dy <= half; dy++) {
-                for (int dx = -half; dx <= half; dx++) {
-                    int ny = y + dy;
-                    int nx = x + dx;
-                    
-                    if (ny >= 0 && ny < input->height && nx >= 0 && nx < input->width) {
-                        int idx = ny * input->width + nx;
-                        window[count++] = input->data[idx].r;
+
+    uint8_t *original = (uint8_t*)malloc(row_size * height);
+    for (int i = 0; i < row_size * height; i++) {
+        original[i] = img->data[i];
+    }
+
+    uint8_t *mask_values = (uint8_t*)malloc(mask_size * mask_size * sizeof(uint8_t));
+
+    for (int y = start_y; y < end_y; y++) {
+        for (int x = 0; x < width; x++) {
+            for (int channel = 0; channel < 3; channel++) {
+                int count = 0;
+
+                for (int dy = -half; dy <= half; dy++) {
+                    for (int dx = -half; dx <= half; dx++) {
+                        int ny = y + dy;
+                        int nx = x + dx;
+
+                        if (ny >= 0 && ny < height && nx >= 0 && nx < width) {
+                            int idx = ny * row_size + nx * 3 + channel;
+                            mask_values[count++] = original[idx];
+                        }
                     }
                 }
+
+                qsort(mask_values, count, sizeof(uint8_t), compare_uint8_mpi);
+
+                uint8_t median = mask_values[count / 2];
+                int idx = y * row_size + x * 3 + channel;
+                img->data[idx] = median;
             }
-            
-            qsort(window, count, sizeof(uint8_t), compare_uint8);
-            uint8_t median = window[count / 2];
-            
-            int local_idx = (y - start_row) * input->width + x;
-            local_result[local_idx].r = median;
-            local_result[local_idx].g = median;
-            local_result[local_idx].b = median;
         }
     }
-    
-    free(window);
-    
-    int *recvcounts = (int*)malloc(size * sizeof(int));
-    int *displs = (int*)malloc(size * sizeof(int));
-    
-    for (int i = 0; i < size; i++) {
-        int rpp = input->height / size;
-        int sr = i * rpp;
-        int er = (i == size - 1) ? input->height : (i + 1) * rpp;
-        recvcounts[i] = (er - sr) * input->width * 3;
-        displs[i] = sr * input->width * 3;
-    }
-    
-    MPI_Gatherv(local_result, local_rows * input->width * 3, MPI_BYTE,
-                output->data, recvcounts, displs, MPI_BYTE, 0, MPI_COMM_WORLD);
-    
-    free(recvcounts);
-    free(displs);
-    
-    MPI_Bcast(output->data, input->width * input->height * 3, MPI_BYTE, 0, MPI_COMM_WORLD);
-    free(local_result);
+
+    free(mask_values);
+    free(original);
 }
 
-void to_grayscale_parallel(Image *input, Image *output, int rank, int size) {
-    int rows_per_proc = input->height / size;
-    int start_row = rank * rows_per_proc;
-    int end_row = (rank == size - 1) ? input->height : (rank + 1) * rows_per_proc;
-    int local_rows = end_row - start_row;
-    
-    Pixel *local_result = (Pixel*)malloc(local_rows * input->width * sizeof(Pixel));
-    
-    for (int y = start_row; y < end_row; y++) {
-        for (int x = 0; x < input->width; x++) {
-            int idx = y * input->width + x;
-            uint8_t gray = (uint8_t)(0.299 * input->data[idx].r + 
-                                      0.587 * input->data[idx].g + 
-                                      0.114 * input->data[idx].b);
-            int local_idx = (y - start_row) * input->width + x;
-            local_result[local_idx].r = gray;
-            local_result[local_idx].g = gray;
-            local_result[local_idx].b = gray;
+// Função para converter para cinza em uma região
+void convert_to_grayscale_region(BMPImage *img, int start_y, int end_y) {
+    int width = img->width;
+    int row_size = ((width * 3 + 3) / 4) * 4;
+
+    for (int y = start_y; y < end_y; y++) {
+        for (int x = 0; x < width; x++) {
+            int idx = y * row_size + x * 3;
+            uint8_t B = img->data[idx];
+            uint8_t G = img->data[idx + 1];
+            uint8_t R = img->data[idx + 2];
+            uint8_t gray = (uint8_t)(0.299 * R + 0.587 * G + 0.114 * B);
+            img->data[idx] = gray;
+            img->data[idx + 1] = gray;
+            img->data[idx + 2] = gray;
         }
     }
-    
-    int *recvcounts = NULL;
-    int *displs = NULL;
-    if (rank == 0) {
-        recvcounts = (int*)malloc(size * sizeof(int));
-        displs = (int*)malloc(size * sizeof(int));
-        for (int i = 0; i < size; i++) {
-            int rpp = input->height / size;
-            int sr = i * rpp;
-            int er = (i == size - 1) ? input->height : (i + 1) * rpp;
-            recvcounts[i] = (er - sr) * input->width * 3;
-            displs[i] = sr * input->width * 3;
-        }
-    }
-    
-    MPI_Gatherv(local_result, local_rows * input->width * 3, MPI_BYTE,
-                output->data, recvcounts, displs, MPI_BYTE, 0, MPI_COMM_WORLD);
-    
-    MPI_Bcast(output->data, input->width * input->height * 3, MPI_BYTE, 0, MPI_COMM_WORLD);
-    free(local_result);
 }
 
-void histogram_equalization_parallel(Image *img, int rank, int size) {
-    int rows_per_proc = img->height / size;
-    int start_row = rank * rows_per_proc;
-    int end_row = (rank == size - 1) ? img->height : (rank + 1) * rows_per_proc;
-    int local_rows = end_row - start_row;
-    
-    int *local_hist = (int*)calloc(256, sizeof(int));
-    
-    for (int y = start_row; y < end_row; y++) {
-        for (int x = 0; x < img->width; x++) {
-            int idx = y * img->width + x;
-            local_hist[img->data[idx].r]++;
+// Função para equalizar histograma em uma região (coleta dados)
+void collect_histogram_region(BMPImage *img, int *histogram, int start_y, int end_y) {
+    int width = img->width;
+    int row_size = ((width * 3 + 3) / 4) * 4;
+
+    for (int y = start_y; y < end_y; y++) {
+        for (int x = 0; x < width; x++) {
+            int idx = y * row_size + x * 3;
+            uint8_t gray = img->data[idx];
+            histogram[gray]++;
         }
     }
-    
-    int *global_hist = (int*)calloc(256, sizeof(int));
-    MPI_Allreduce(local_hist, global_hist, 256, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-    
-    int *cdf = (int*)malloc(256 * sizeof(int));
-    cdf[0] = global_hist[0];
-    for (int i = 1; i < 256; i++) {
-        cdf[i] = cdf[i-1] + global_hist[i];
-    }
-    
-    int min_cdf = 0;
-    for (int i = 0; i < 256; i++) {
-        if (cdf[i] > 0) {
-            min_cdf = cdf[i];
-            break;
+}
+
+// Função para aplicar equalização em uma região
+void apply_equalization_region(BMPImage *img, int *cumulative, int total_pixels, int start_y, int end_y) {
+    int width = img->width;
+    int row_size = ((width * 3 + 3) / 4) * 4;
+
+    for (int y = start_y; y < end_y; y++) {
+        for (int x = 0; x < width; x++) {
+            int idx = y * row_size + x * 3;
+            uint8_t gray = img->data[idx];
+            uint8_t new_value = (uint8_t)((cumulative[gray] * 255.0) / total_pixels);
+            img->data[idx] = new_value;
+            img->data[idx + 1] = new_value;
+            img->data[idx + 2] = new_value;
         }
     }
-    
-    int total_pixels = img->width * img->height;
-    
-    Pixel *local_result = (Pixel*)malloc(local_rows * img->width * sizeof(Pixel));
-    
-    for (int y = start_row; y < end_row; y++) {
-        for (int x = 0; x < img->width; x++) {
-            int idx = y * img->width + x;
-            uint8_t old_val = img->data[idx].r;
-            uint8_t new_val = (uint8_t)((cdf[old_val] - min_cdf) * 255.0 / (total_pixels - min_cdf));
-            int local_idx = (y - start_row) * img->width + x;
-            local_result[local_idx].r = new_val;
-            local_result[local_idx].g = new_val;
-            local_result[local_idx].b = new_val;
-        }
-    }
-    
-    int *recvcounts = (int*)malloc(size * sizeof(int));
-    int *displs = (int*)malloc(size * sizeof(int));
-    
-    for (int i = 0; i < size; i++) {
-        int rpp = img->height / size;
-        int sr = i * rpp;
-        int er = (i == size - 1) ? img->height : (i + 1) * rpp;
-        recvcounts[i] = (er - sr) * img->width * 3;
-        displs[i] = sr * img->width * 3;
-    }
-    
-    MPI_Gatherv(local_result, local_rows * img->width * 3, MPI_BYTE,
-                img->data, recvcounts, displs, MPI_BYTE, 0, MPI_COMM_WORLD);
-    
-    free(recvcounts);
-    free(displs);
-    
-    MPI_Bcast(img->data, img->width * img->height * 3, MPI_BYTE, 0, MPI_COMM_WORLD);
-    
-    free(local_hist);
-    free(global_hist);
-    free(cdf);
-    free(local_result);
 }
 
 int main(int argc, char *argv[]) {
     MPI_Init(&argc, &argv);
-    
+
     int rank, size;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
-    
-    if (argc != 4) {
+
+    if (argc != 3) {
         if (rank == 0) {
-            fprintf(stderr, "Usage: mpirun -np <num_procs> %s <input_image.bmp> <output_image.bmp> <mask_size>\n", argv[0]);
+            printf("Uso: mpirun -np <num_processos> %s <tamanho_mascara> <arquivo_entrada>\n", argv[0]);
+            printf("Exemplo: mpirun -np 4 %s 3 data/img.bmp\n", argv[0]);
         }
         MPI_Finalize();
         return 1;
     }
-    
-    int mask_size = atoi(argv[3]);
+
+    int mask_size = atoi(argv[1]);
     if (mask_size % 2 == 0 || mask_size < 3) {
         if (rank == 0) {
-            fprintf(stderr, "Mask size must be odd and >= 3\n");
+            printf("Tamanho da máscara deve ser ímpar e >= 3\n");
         }
         MPI_Finalize();
         return 1;
     }
+
+    const char *input_file = argv[2];
     
-    double start_time = MPI_Wtime();
-    
-    Image *input = NULL;
+    // Gera nome do arquivo de saída com tamanho da máscara
+    char output_file[256];
     if (rank == 0) {
-        input = read_bmp(argv[1]);
-        if (!input) {
-            MPI_Finalize();
-            return 1;
+        snprintf(output_file, sizeof(output_file), "output/mpi_%d_output.bmp", mask_size);
+    }
+
+    BMPImage *img = NULL;
+    double start_time = 0.0, end_time;
+
+    // Processo 0 lê a imagem
+    if (rank == 0) {
+        printf("Lendo imagem: %s\n", input_file);
+        img = read_bmp(input_file);
+        if (!img) {
+            MPI_Abort(MPI_COMM_WORLD, 1);
         }
+        printf("Imagem carregada: %dx%d\n", img->width, img->height);
+        printf("Matriz de %d\n", mask_size);
+        printf("Processando com %d processos...\n", size);
+        start_time = MPI_Wtime();
     }
-    
-    int width, height;
+
+    // Envia dimensões da imagem para todos os processos
+    int width, height, row_size, data_size;
     if (rank == 0) {
-        width = input->width;
-        height = input->height;
+        width = img->width;
+        height = img->height;
+        row_size = ((width * 3 + 3) / 4) * 4;
+        data_size = row_size * height;
     }
-    
+
     MPI_Bcast(&width, 1, MPI_INT, 0, MPI_COMM_WORLD);
     MPI_Bcast(&height, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    
+    MPI_Bcast(&row_size, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&data_size, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+    // Todos os processos alocam memória
     if (rank != 0) {
-        input = (Image*)malloc(sizeof(Image));
-        input->width = width;
-        input->height = height;
-        input->data = (Pixel*)malloc(input->width * input->height * sizeof(Pixel));
+        img = (BMPImage*)malloc(sizeof(BMPImage));
+        img->width = width;
+        img->height = height;
+        img->data = (uint8_t*)malloc(data_size);
     }
-    
-    MPI_Bcast(input->data, width * height * 3, MPI_BYTE, 0, MPI_COMM_WORLD);
-    
-    Image *filtered = (Image*)malloc(sizeof(Image));
-    filtered->width = width;
-    filtered->height = height;
-    filtered->data = (Pixel*)malloc(filtered->width * filtered->height * sizeof(Pixel));
-    
-    Image *grayscale = (Image*)malloc(sizeof(Image));
-    grayscale->width = width;
-    grayscale->height = height;
-    grayscale->data = (Pixel*)malloc(grayscale->width * grayscale->height * sizeof(Pixel));
-    
-    median_filter_parallel(input, filtered, mask_size, rank, size);
-    to_grayscale_parallel(filtered, grayscale, rank, size);
-    histogram_equalization_parallel(grayscale, rank, size);
-    
+
+    // Distribui a imagem para todos os processos
+    MPI_Bcast(img->data, data_size, MPI_BYTE, 0, MPI_COMM_WORLD);
+
+    // Calcula região de cada processo
+    int rows_per_process = height / size;
+    int start_y = rank * rows_per_process;
+    int end_y = (rank == size - 1) ? height : (rank + 1) * rows_per_process;
+
+    // ETAPA 1: Filtro mediana
+    // Cada processo processa sua região (com overlap mínimo para bordas)
+    int half = mask_size / 2;
+    int local_start = (start_y > half) ? start_y - half : 0;
+    int local_end = (end_y < height - half) ? end_y + half : height;
+
+    apply_median_filter_region(img, mask_size, local_start, local_end);
+
+    // Coleta apenas as partes processadas (sem overlap desnecessário)
     if (rank == 0) {
-        if (!write_bmp(argv[2], grayscale)) {
-            free_image(input);
-            free_image(filtered);
-            free_image(grayscale);
-            MPI_Finalize();
-            return 1;
+        // Processo 0 já tem sua parte, recebe das outras
+        for (int i = 1; i < size; i++) {
+            int other_start = i * rows_per_process;
+            int other_end = (i == size - 1) ? height : (i + 1) * rows_per_process;
+            int offset = other_start * row_size;
+            int recv_size = (other_end - other_start) * row_size;
+            MPI_Recv(img->data + offset, recv_size, MPI_BYTE, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         }
+    } else {
+        // Outros processos enviam apenas sua parte
+        int offset = start_y * row_size;
+        int send_size = (end_y - start_y) * row_size;
+        MPI_Send(img->data + offset, send_size, MPI_BYTE, 0, 0, MPI_COMM_WORLD);
     }
+
+    // Broadcast apenas se necessário para próxima etapa (mas não precisamos, vamos processar localmente)
+    // Removido broadcast desnecessário
+
+    // ETAPA 2: Conversão para cinza
+    // Broadcast da imagem filtrada para todos os processos (todos devem chamar Bcast)
+    MPI_Bcast(img->data, data_size, MPI_BYTE, 0, MPI_COMM_WORLD);
     
-    double end_time = MPI_Wtime();
-    double time_spent = end_time - start_time;
-    
+    convert_to_grayscale_region(img, start_y, end_y);
+
+    // Coleta resultados
     if (rank == 0) {
-        printf("MPI time (%d processes): %.6f seconds\n", size, time_spent);
+        for (int i = 1; i < size; i++) {
+            int other_start = i * rows_per_process;
+            int other_end = (i == size - 1) ? height : (i + 1) * rows_per_process;
+            int offset = other_start * row_size;
+            int recv_size = (other_end - other_start) * row_size;
+            MPI_Recv(img->data + offset, recv_size, MPI_BYTE, i, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        }
+    } else {
+        int offset = start_y * row_size;
+        int send_size = (end_y - start_y) * row_size;
+        MPI_Send(img->data + offset, send_size, MPI_BYTE, 0, 1, MPI_COMM_WORLD);
     }
+
+    // ETAPA 3: Equalização de histograma
+    // Broadcast da imagem em cinza para todos os processos (todos devem chamar Bcast)
+    MPI_Bcast(img->data, data_size, MPI_BYTE, 0, MPI_COMM_WORLD);
     
-    free_image(input);
-    free_image(filtered);
-    free_image(grayscale);
-    
+    int local_histogram[256] = {0};
+    collect_histogram_region(img, local_histogram, start_y, end_y);
+
+    // Soma histogramas de todos os processos
+    int global_histogram[256];
+    MPI_Allreduce(local_histogram, global_histogram, 256, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+
+    // Calcula histograma cumulativo (todos os processos calculam o mesmo)
+    int cumulative[256];
+    cumulative[0] = global_histogram[0];
+    for (int i = 1; i < 256; i++) {
+        cumulative[i] = cumulative[i - 1] + global_histogram[i];
+    }
+
+    int total_pixels = width * height;
+    apply_equalization_region(img, cumulative, total_pixels, start_y, end_y);
+
+    // Coleta resultados finais
+    if (rank == 0) {
+        for (int i = 1; i < size; i++) {
+            int other_start = i * rows_per_process;
+            int other_end = (i == size - 1) ? height : (i + 1) * rows_per_process;
+            int offset = other_start * row_size;
+            int recv_size = (other_end - other_start) * row_size;
+            MPI_Recv(img->data + offset, recv_size, MPI_BYTE, i, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        }
+
+        end_time = MPI_Wtime();
+        double time_spent = end_time - start_time;
+
+        printf("Salvando imagem: %s\n", output_file);
+        write_bmp(output_file, img);
+        printf("Tempo total: %.4f segundos\n", time_spent);
+    } else {
+        int offset = start_y * row_size;
+        int send_size = (end_y - start_y) * row_size;
+        MPI_Send(img->data + offset, send_size, MPI_BYTE, 0, 2, MPI_COMM_WORLD);
+    }
+
+    free_bmp(img);
     MPI_Finalize();
+
     return 0;
 }
 

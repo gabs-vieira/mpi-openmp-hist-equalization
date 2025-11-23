@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Análise de Desempenho - Speedup e Eficiência</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .chart-container {
+            margin: 30px 0;
+            position: relative;
+            height: 400px;
+        }
+        .chart-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Análise de Desempenho: Speedup e Eficiência</h1>
+
+        <div class="chart-container">
+            <div class="chart-title">Speedup - Máscara 3x3</div>
+            <canvas id="speedup_3x3"></canvas>
+        </div>
+        <script>
+            const ctx_speedup_3x3 = document.getElementById('speedup_3x3').getContext('2d');
+            new Chart(ctx_speedup_3x3, {
+                type: 'line',
+                data: {
+                    labels: [1, 2, 3, 4],
+                    datasets: [
+                        {
+                            label: 'Ideal (Speedup Linear)',
+                            data: [1, 2, 3, 4],
+                            borderColor: 'rgba(0, 0, 0, 0.3)',
+                            borderDash: [5, 5],
+                            pointRadius: 0,
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'MPI',
+                            data: [0.5785, 0.9508, 2.8292, 3.5419],
+                            borderColor: 'rgb(31, 119, 180)',
+                            backgroundColor: 'rgba(31, 119, 180, 0.1)',
+                            pointRadius: 6,
+                            pointBackgroundColor: 'rgb(31, 119, 180)',
+                            borderWidth: 2
+                        },
+                        {
+                            label: 'OpenMP',
+                            data: [0.703, 1.3975, 1.9333, 2.3553],
+                            borderColor: 'rgb(148, 103, 189)',
+                            backgroundColor: 'rgba(148, 103, 189, 0.1)',
+                            pointRadius: 6,
+                            pointBackgroundColor: 'rgb(148, 103, 189)',
+                            borderWidth: 2,
+                            borderDash: [5, 5]
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Processos/Threads'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Speedup'
+                            },
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        }
+                    }
+                }
+            });
+        </script>
+    
+        <div class="chart-container">
+            <div class="chart-title">Eficiência - Máscara 3x3</div>
+            <canvas id="eficiencia_3x3"></canvas>
+        </div>
+        <script>
+            const ctx_eficiencia_3x3 = document.getElementById('eficiencia_3x3').getContext('2d');
+            new Chart(ctx_eficiencia_3x3, {
+                type: 'line',
+                data: {
+                    labels: [1, 2, 3, 4],
+                    datasets: [
+                        {
+                            label: 'Ideal (Eficiência = 1.0)',
+                            data: [1.0, 1.0, 1.0, 1.0],
+                            borderColor: 'rgba(0, 0, 0, 0.3)',
+                            borderDash: [5, 5],
+                            pointRadius: 0,
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'MPI',
+                            data: [0.5785, 0.4754, 0.943, 0.8854],
+                            borderColor: 'rgb(31, 119, 180)',
+                            backgroundColor: 'rgba(31, 119, 180, 0.1)',
+                            pointRadius: 6,
+                            pointBackgroundColor: 'rgb(31, 119, 180)',
+                            borderWidth: 2
+                        },
+                        {
+                            label: 'OpenMP',
+                            data: [0.703, 0.6987, 0.6444, 0.5888],
+                            borderColor: 'rgb(148, 103, 189)',
+                            backgroundColor: 'rgba(148, 103, 189, 0.1)',
+                            pointRadius: 6,
+                            pointBackgroundColor: 'rgb(148, 103, 189)',
+                            borderWidth: 2,
+                            borderDash: [5, 5]
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Processos/Threads'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Eficiência'
+                            },
+                            beginAtZero: true,
+                            max: 1.2
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        }
+                    }
+                }
+            });
+        </script>
+    
+        <div class="chart-container">
+            <div class="chart-title">Speedup - Máscara 5x5</div>
+            <canvas id="speedup_5x5"></canvas>
+        </div>
+        <script>
+            const ctx_speedup_5x5 = document.getElementById('speedup_5x5').getContext('2d');
+            new Chart(ctx_speedup_5x5, {
+                type: 'line',
+                data: {
+                    labels: [1, 2, 3, 4],
+                    datasets: [
+                        {
+                            label: 'Ideal (Speedup Linear)',
+                            data: [1, 2, 3, 4],
+                            borderColor: 'rgba(0, 0, 0, 0.3)',
+                            borderDash: [5, 5],
+                            pointRadius: 0,
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'MPI',
+                            data: [0.4763, 0.932, 2.7846, 3.5282],
+                            borderColor: 'rgb(31, 119, 180)',
+                            backgroundColor: 'rgba(31, 119, 180, 0.1)',
+                            pointRadius: 6,
+                            pointBackgroundColor: 'rgb(31, 119, 180)',
+                            borderWidth: 2
+                        },
+                        {
+                            label: 'OpenMP',
+                            data: [0.6069, 1.2552, 1.7555, 2.3324],
+                            borderColor: 'rgb(148, 103, 189)',
+                            backgroundColor: 'rgba(148, 103, 189, 0.1)',
+                            pointRadius: 6,
+                            pointBackgroundColor: 'rgb(148, 103, 189)',
+                            borderWidth: 2,
+                            borderDash: [5, 5]
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Processos/Threads'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Speedup'
+                            },
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        }
+                    }
+                }
+            });
+        </script>
+    
+        <div class="chart-container">
+            <div class="chart-title">Eficiência - Máscara 5x5</div>
+            <canvas id="eficiencia_5x5"></canvas>
+        </div>
+        <script>
+            const ctx_eficiencia_5x5 = document.getElementById('eficiencia_5x5').getContext('2d');
+            new Chart(ctx_eficiencia_5x5, {
+                type: 'line',
+                data: {
+                    labels: [1, 2, 3, 4],
+                    datasets: [
+                        {
+                            label: 'Ideal (Eficiência = 1.0)',
+                            data: [1.0, 1.0, 1.0, 1.0],
+                            borderColor: 'rgba(0, 0, 0, 0.3)',
+                            borderDash: [5, 5],
+                            pointRadius: 0,
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'MPI',
+                            data: [0.4763, 0.466, 0.9282, 0.882],
+                            borderColor: 'rgb(31, 119, 180)',
+                            backgroundColor: 'rgba(31, 119, 180, 0.1)',
+                            pointRadius: 6,
+                            pointBackgroundColor: 'rgb(31, 119, 180)',
+                            borderWidth: 2
+                        },
+                        {
+                            label: 'OpenMP',
+                            data: [0.6069, 0.6276, 0.5851, 0.5831],
+                            borderColor: 'rgb(148, 103, 189)',
+                            backgroundColor: 'rgba(148, 103, 189, 0.1)',
+                            pointRadius: 6,
+                            pointBackgroundColor: 'rgb(148, 103, 189)',
+                            borderWidth: 2,
+                            borderDash: [5, 5]
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Processos/Threads'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Eficiência'
+                            },
+                            beginAtZero: true,
+                            max: 1.2
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        }
+                    }
+                }
+            });
+        </script>
+    
+        <div class="chart-container">
+            <div class="chart-title">Speedup - Máscara 7x7</div>
+            <canvas id="speedup_7x7"></canvas>
+        </div>
+        <script>
+            const ctx_speedup_7x7 = document.getElementById('speedup_7x7').getContext('2d');
+            new Chart(ctx_speedup_7x7, {
+                type: 'line',
+                data: {
+                    labels: [1, 2, 3, 4],
+                    datasets: [
+                        {
+                            label: 'Ideal (Speedup Linear)',
+                            data: [1, 2, 3, 4],
+                            borderColor: 'rgba(0, 0, 0, 0.3)',
+                            borderDash: [5, 5],
+                            pointRadius: 0,
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'MPI',
+                            data: [0.5358, 0.9695, 2.4448, 2.7444],
+                            borderColor: 'rgb(31, 119, 180)',
+                            backgroundColor: 'rgba(31, 119, 180, 0.1)',
+                            pointRadius: 6,
+                            pointBackgroundColor: 'rgb(31, 119, 180)',
+                            borderWidth: 2
+                        },
+                        {
+                            label: 'OpenMP',
+                            data: [0.6177, 1.2448, 1.7418, 2.3427],
+                            borderColor: 'rgb(148, 103, 189)',
+                            backgroundColor: 'rgba(148, 103, 189, 0.1)',
+                            pointRadius: 6,
+                            pointBackgroundColor: 'rgb(148, 103, 189)',
+                            borderWidth: 2,
+                            borderDash: [5, 5]
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Processos/Threads'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Speedup'
+                            },
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        }
+                    }
+                }
+            });
+        </script>
+    
+        <div class="chart-container">
+            <div class="chart-title">Eficiência - Máscara 7x7</div>
+            <canvas id="eficiencia_7x7"></canvas>
+        </div>
+        <script>
+            const ctx_eficiencia_7x7 = document.getElementById('eficiencia_7x7').getContext('2d');
+            new Chart(ctx_eficiencia_7x7, {
+                type: 'line',
+                data: {
+                    labels: [1, 2, 3, 4],
+                    datasets: [
+                        {
+                            label: 'Ideal (Eficiência = 1.0)',
+                            data: [1.0, 1.0, 1.0, 1.0],
+                            borderColor: 'rgba(0, 0, 0, 0.3)',
+                            borderDash: [5, 5],
+                            pointRadius: 0,
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'MPI',
+                            data: [0.5358, 0.4847, 0.8149, 0.6861],
+                            borderColor: 'rgb(31, 119, 180)',
+                            backgroundColor: 'rgba(31, 119, 180, 0.1)',
+                            pointRadius: 6,
+                            pointBackgroundColor: 'rgb(31, 119, 180)',
+                            borderWidth: 2
+                        },
+                        {
+                            label: 'OpenMP',
+                            data: [0.6177, 0.6224, 0.5806, 0.5856],
+                            borderColor: 'rgb(148, 103, 189)',
+                            backgroundColor: 'rgba(148, 103, 189, 0.1)',
+                            pointRadius: 6,
+                            pointBackgroundColor: 'rgb(148, 103, 189)',
+                            borderWidth: 2,
+                            borderDash: [5, 5]
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Processos/Threads'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Eficiência'
+                            },
+                            beginAtZero: true,
+                            max: 1.2
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        }
+                    }
+                }
+            });
+        </script>
+    
+    </div>
+</body>
+</html>
