@@ -34,7 +34,7 @@ echo "=== VERSÃO SEQUENCIAL ===" >> $RESULTS_FILE
 
 for mask in 3 5 7; do
     echo "  Máscara ${mask}x${mask}..."
-    # Captura o tempo do output do programa (mais preciso)
+    # Captura o tempo do output do programa
     TIME=$(./bin/sequential $mask $INPUT_FILE 2>&1 | grep "Tempo total" | awk '{print $3}')
     if [ -z "$TIME" ] || [ "$TIME" = "" ]; then
         echo "Erro ao capturar tempo para máscara ${mask}x${mask}"
@@ -58,7 +58,7 @@ for mask in 3 5 7; do
     
     for procs in 1 2 3 4; do
         echo "    Processos $procs..."
-        # Captura o tempo do output do programa MPI (mais preciso, não inclui overhead de inicialização)
+        # Captura o tempo do output do programa MPI
         TIME=$(mpirun -np $procs ./bin/mpi_version $mask $INPUT_FILE 2>&1 | grep "Tempo total" | awk '{print $3}')
         
         if [ -z "$TIME" ] || [ "$TIME" = "" ]; then
