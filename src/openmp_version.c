@@ -43,7 +43,7 @@ int main(int argc, char *argv[]) {
 
     double start_time = omp_get_wtime();
 
-    // ETAPA 1: filtro mediana
+    // STEP 1: median filter
     printf("Aplicando filtro mediana %dx%d...\n", mask_size, mask_size);
     int width = img->width;
     int height = img->height;
@@ -91,7 +91,7 @@ int main(int argc, char *argv[]) {
 
     free(original);
 
-    // ETAPA 2: conversão para tons de cinza
+    // STEP 2: convert to grayscale
     printf("Convertendo para tons de cinza...\n");
     #pragma omp parallel for
     for (int y = 0; y < height; y++) {
@@ -107,11 +107,11 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // ETAPA 3: equalização de histograma
+    // STEP 3: histogram equalization
     printf("Equalizando histograma...\n");
     int histogram[256] = {0};
 
-    // calcula histograma
+    // calculate histogram
     #pragma omp parallel
     {
         int local_histogram[256] = {0};
@@ -125,7 +125,7 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        // soma histogramas locais
+        // sum local histograms
         #pragma omp critical
         {
             for (int i = 0; i < 256; i++) {
@@ -134,7 +134,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // calcula histograma cumulativo
+    // calculate cumulative histogram
     int cumulative[256];
     cumulative[0] = histogram[0];
     for (int i = 1; i < 256; i++) {
@@ -143,7 +143,7 @@ int main(int argc, char *argv[]) {
 
     int total_pixels = width * height;
 
-    // aplica equalização
+    // apply equalization
     #pragma omp parallel for
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
@@ -162,7 +162,7 @@ int main(int argc, char *argv[]) {
     printf("Salvando imagem: %s\n", output_file);
     write_bmp(output_file, img);
 
-    printf("Tempo total: %.4f segundos\n", time_spent);
+    printf("TEMPO_TOTAL=%.6f\n", time_spent);
     free_bmp(img);
 
     return 0;

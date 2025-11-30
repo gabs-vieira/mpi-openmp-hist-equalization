@@ -4,16 +4,16 @@
 #include "bmp.h"
 #include <stdint.h>
 
-// Função auxiliar para comparar valores (usada no qsort)
+// helper function for qsort
 int compare_uint8(const void *a, const void *b);
 
-// Aplica filtro mediana N×N na imagem
+// applies N×N median filter to image
 void apply_median_filter(BMPImage *img, int mask_size);
 
-// Converte imagem para tons de cinza
+// converts image to grayscale
 void convert_to_grayscale(BMPImage *img);
 
-// Equaliza o histograma da imagem
+// equalizes image histogram
 void equalize_histogram(BMPImage *img);
 
 #endif

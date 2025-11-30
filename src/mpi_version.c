@@ -5,7 +5,7 @@
 #include "bmp.h"
 #include "image_processing.h"
 
-// Função auxiliar para comparar valores
+// helper function for qsort
 int compare_uint8_mpi(const void *a, const void *b) {
     uint8_t va = *(uint8_t*)a;
     uint8_t vb = *(uint8_t*)b;
@@ -138,7 +138,7 @@ int main(int argc, char *argv[]) {
     BMPImage *img = NULL;
     double start_time = 0.0, end_time;
 
-    // processo 0 lê a imagem
+    // process 0 reads the image
     if (rank == 0) {
         printf("Lendo imagem: %s\n", input_file);
         img = read_bmp(input_file);
@@ -151,7 +151,7 @@ int main(int argc, char *argv[]) {
         start_time = MPI_Wtime();
     }
 
-    // envia dimensões da imagem para todos os processos
+    // broadcast image dimensions to all processes
     int width, height, row_size, data_size;
     if (rank == 0) {
         width = img->width;
@@ -165,7 +165,7 @@ int main(int argc, char *argv[]) {
     MPI_Bcast(&row_size, 1, MPI_INT, 0, MPI_COMM_WORLD);
     MPI_Bcast(&data_size, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
-    // ttodos os processos alocam memória
+    // all processes allocate memory
     if (rank != 0) {
         img = (BMPImage*)malloc(sizeof(BMPImage));
         img->width = width;
@@ -173,25 +173,25 @@ int main(int argc, char *argv[]) {
         img->data = (uint8_t*)malloc(data_size);
     }
 
-    // Distribui a imagem para todos os processos
+    // broadcast image data to all processes
     MPI_Bcast(img->data, data_size, MPI_BYTE, 0, MPI_COMM_WORLD);
 
-    // Calcula região de cada processo
+    // calculate each process's region
     int rows_per_process = height / size;
     int start_y = rank * rows_per_process;
     int end_y = (rank == size - 1) ? height : (rank + 1) * rows_per_process;
 
-    // ETAPA 1: Filtro mediana
-    // cada processo processa sua região
+    // STEP 1: median filter
+    // each process processes its region (need extra rows for border)
     int half = mask_size / 2;
     int local_start = (start_y > half) ? start_y - half : 0;
     int local_end = (end_y < height - half) ? end_y + half : height;
 
     apply_median_filter_region(img, mask_size, local_start, local_end);
 
-    // coleta apenas as partes processadas
+    // gather processed parts
     if (rank == 0) {
-        // processo 0 já tem sua parte, recebe das outras
+        // process 0 already has its part, receive from others
         for (int i = 1; i < size; i++) {
             int other_start = i * rows_per_process;
             int other_end = (i == size - 1) ? height : (i + 1) * rows_per_process;
@@ -200,18 +200,18 @@ int main(int argc, char *argv[]) {
             MPI_Recv(img->data + offset, recv_size, MPI_BYTE, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         }
     } else {
-        // outros processos enviam apenas sua parte
+        // other processes send only their part
         int offset = start_y * row_size;
         int send_size = (end_y - start_y) * row_size;
         MPI_Send(img->data + offset, send_size, MPI_BYTE, 0, 0, MPI_COMM_WORLD);
     }
 
-    // ETAPA 2: conversão para cinza
+    // STEP 2: convert to grayscale
     MPI_Bcast(img->data, data_size, MPI_BYTE, 0, MPI_COMM_WORLD);
     
     convert_to_grayscale_region(img, start_y, end_y);
 
-    // coleta resultados
+    // gather results
     if (rank == 0) {
         for (int i = 1; i < size; i++) {
             int other_start = i * rows_per_process;
@@ -226,18 +226,18 @@ int main(int argc, char *argv[]) {
         MPI_Send(img->data + offset, send_size, MPI_BYTE, 0, 1, MPI_COMM_WORLD);
     }
 
-    // ETAPA 3: equalização de histograma
-    // broadcast da imagem em cinza para todos os processos
+    // STEP 3: histogram equalization
+    // broadcast grayscale image to all processes
     MPI_Bcast(img->data, data_size, MPI_BYTE, 0, MPI_COMM_WORLD);
     
     int local_histogram[256] = {0};
     collect_histogram_region(img, local_histogram, start_y, end_y);
 
-    // soma histogramas de todos os processos
+    // sum histograms from all processes
     int global_histogram[256];
     MPI_Allreduce(local_histogram, global_histogram, 256, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
 
-    // calcula histograma cumulativo
+    // calculate cumulative histogram
     int cumulative[256];
     cumulative[0] = global_histogram[0];
     for (int i = 1; i < 256; i++) {
@@ -247,7 +247,7 @@ int main(int argc, char *argv[]) {
     int total_pixels = width * height;
     apply_equalization_region(img, cumulative, total_pixels, start_y, end_y);
 
-    // coleta resultados finais
+    // gather final results
     if (rank == 0) {
         for (int i = 1; i < size; i++) {
             int other_start = i * rows_per_process;
@@ -262,7 +262,7 @@ int main(int argc, char *argv[]) {
 
         printf("Salvando imagem: %s\n", output_file);
         write_bmp(output_file, img);
-        printf("Tempo total: %.4f segundos\n", time_spent);
+        printf("TEMPO_TOTAL=%.6f\n", time_spent);
     } else {
         int offset = start_y * row_size;
         int send_size = (end_y - start_y) * row_size;

@@ -5,20 +5,20 @@
 #include <stdlib.h>
 #include <stdint.h>
 
-// Estrutura para armazenar uma imagem BMP
+// structure to store a BMP image
 typedef struct {
     int width;
     int height;
-    uint8_t *data;  // Dados da imagem (BGR)
+    uint8_t *data;  // image data (BGR format)
 } BMPImage;
 
-// Lê uma imagem BMP do arquivo
+// reads a BMP file
 BMPImage* read_bmp(const char *filename);
 
-// Escreve uma imagem BMP no arquivo
+// writes BMP to file
 void write_bmp(const char *filename, BMPImage *img);
 
-// Libera a memória da imagem
+// frees image memory
 void free_bmp(BMPImage *img);
 
 #endif

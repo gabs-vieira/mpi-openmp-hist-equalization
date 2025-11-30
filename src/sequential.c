@@ -48,7 +48,7 @@ int main(int argc, char *argv[]) {
     printf("Salvando imagem: %s\n", output_file);
     write_bmp(output_file, img);
 
-    printf("Tempo total: %.4f segundos\n", time_spent);
+    printf("TEMPO_TOTAL=%.6f\n", time_spent);
 
     free_bmp(img);
 
